@@ -5,6 +5,10 @@ import (
 	"sync"
 )
 
+const (
+	maxHistory uint = 999_999
+)
+
 type DB interface {
 	// Put adds or updates entry for given key.
 	Put(key, value []byte)
@@ -119,11 +123,20 @@ func (d *db) KeysAndValues() <-chan *Tuple {
 }
 
 func (d *db) Save(dir string, hist uint) error {
-	panic("implement me")
+	if hist > maxHistory {
+		return ErrTooMuchHistory
+	}
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
+	return save(d, dir, hist)
 }
 
 func (d *db) Load(dir string) error {
-	panic("implement me")
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
+	return load(d, dir)
 }
 
 func New() DB {
