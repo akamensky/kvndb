@@ -73,25 +73,27 @@ type db struct {
 }
 
 func (d *db) Put(key, value []byte) error {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
 	if d.isClosed {
 		return ErrAlreadyClosed
 	}
 
-	d.mutex.Lock()
 	d.data[hex.EncodeToString(key)] = value
-	d.mutex.Unlock()
 
 	return nil
 }
 
 func (d *db) Get(key []byte) ([]byte, error) {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
 	if d.isClosed {
 		return nil, ErrAlreadyClosed
 	}
 
-	d.mutex.Lock()
 	value, ok := d.data[hex.EncodeToString(key)]
-	d.mutex.Unlock()
 	if !ok {
 		return nil, ErrKeyNotFound
 	}
@@ -100,13 +102,14 @@ func (d *db) Get(key []byte) ([]byte, error) {
 }
 
 func (d *db) Delete(key []byte) error {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
 	if d.isClosed {
 		return ErrAlreadyClosed
 	}
 
-	d.mutex.Lock()
 	delete(d.data, hex.EncodeToString(key))
-	d.mutex.Unlock()
 
 	return nil
 }
@@ -114,15 +117,17 @@ func (d *db) Delete(key []byte) error {
 func (d *db) Size() uint64 {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
+
 	return uint64(len(d.data))
 }
 
 func (d *db) Keys() (<-chan []byte, error) {
+	d.mutex.Lock()
+
 	if d.isClosed {
 		return nil, ErrAlreadyClosed
 	}
 
-	d.mutex.Lock()
 	ch := make(chan []byte)
 
 	go func() {
@@ -137,11 +142,12 @@ func (d *db) Keys() (<-chan []byte, error) {
 }
 
 func (d *db) KeysAndValues() (<-chan *Tuple, error) {
+	d.mutex.Lock()
+
 	if d.isClosed {
 		return nil, ErrAlreadyClosed
 	}
 
-	d.mutex.Lock()
 	ch := make(chan *Tuple)
 
 	go func() {
@@ -159,6 +165,9 @@ func (d *db) KeysAndValues() (<-chan *Tuple, error) {
 }
 
 func (d *db) Save(dir string, hist uint) error {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
 	if d.isClosed {
 		return ErrAlreadyClosed
 	}
@@ -166,19 +175,17 @@ func (d *db) Save(dir string, hist uint) error {
 	if hist > maxHistory {
 		return ErrTooMuchHistory
 	}
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
 
 	return save(d, dir, hist)
 }
 
 func (d *db) Load(dir string) error {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
 	if d.isClosed {
 		return ErrAlreadyClosed
 	}
-
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
 
 	return load(d, dir)
 }
@@ -189,12 +196,12 @@ func (d *db) Wait() {
 }
 
 func (d *db) Close() error {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
 	if d.isClosed {
 		return ErrAlreadyClosed
 	}
-
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
 
 	d.data = nil
 	d.isClosed = true
