@@ -106,11 +106,7 @@ func getNextSnapshotFDForWriting(dir string) (io.WriteCloser, error) {
 		return nil, err
 	}
 
-	if maxId == 0 {
-		maxId = 1
-	}
-
-	fd, err := os.OpenFile(getFilepath(dir, maxId), os.O_WRONLY|os.O_CREATE|os.O_SYNC, 0666)
+	fd, err := os.OpenFile(getFilepath(dir, maxId+1), os.O_WRONLY|os.O_CREATE|os.O_SYNC, 0666)
 	if err != nil {
 		return nil, err
 	}
