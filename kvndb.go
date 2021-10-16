@@ -41,7 +41,8 @@ type DB interface {
 	// directory path. If snapshot successful it will clean up
 	// keeping only `hist` number of snapshots. This operation
 	// is synchronous, which means all other operations will be
-	// blocked until it is done.
+	// blocked until it is done. `hist` value of 0 will only
+	// save current copy. Value of 1 will keep current and previous.
 	Save(dir string, hist uint) error
 
 	// Load will load data from snapshot. It will replace any

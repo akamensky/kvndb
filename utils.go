@@ -218,16 +218,18 @@ func uint32ToBytes(data uint32) []byte {
 }
 
 func cleanupSnapshotsUpTo(dir string, hist uint) error {
+	keep := hist + 1
+
 	ids, err := getAllSnapshotIds(dir)
 	if err != nil {
 		return err
 	}
 
-	if len(ids) <= int(hist) {
+	if len(ids) <= int(keep) {
 		return nil
 	}
 
-	toDelete := ids[:(len(ids) - int(hist))]
+	toDelete := ids[:(len(ids) - int(keep))]
 
 	for _, id := range toDelete {
 		err = os.Remove(getFilepath(dir, id))
