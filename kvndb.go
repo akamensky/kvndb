@@ -141,6 +141,10 @@ func (d *db) Load(dir string) error {
 }
 
 func New() DB {
+	return newDb()
+}
+
+func newDb() *db {
 	return &db{
 		data:  make(map[string][]byte),
 		mutex: &sync.Mutex{},
