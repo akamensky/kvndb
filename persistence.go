@@ -31,6 +31,11 @@ func save(d *db, dir string, hist uint) error {
 		return err
 	}
 
+	// at least save last one
+	if hist == 0 {
+		hist = 1
+	}
+
 	err = cleanupSnapshotsUpTo(dir, hist)
 	if err != nil {
 		return err
