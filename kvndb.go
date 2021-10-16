@@ -11,14 +11,14 @@ const (
 
 type DB interface {
 	// Put adds or updates entry for given key.
-	Put(key, value []byte)
+	Put(key, value []byte) error
 
 	// Get returns value for given key, ErrKeyNotFound if key
 	// does not exist.
 	Get(key []byte) ([]byte, error)
 
 	// Delete removes entry for given key.
-	Delete(key []byte)
+	Delete(key []byte) error
 
 	// Size returns the number of currently stored entries.
 	Size() uint64
@@ -28,14 +28,14 @@ type DB interface {
 	// other operations will be	blocked until all values are read.
 	// You MUST read all values until the channel is closed. Best
 	// to use `range`.
-	Keys() <-chan []byte
+	Keys() (<-chan []byte, error)
 
 	// KeysAndValues returns a channel that will iterate
 	// over all keys and values of all entries. This operation
 	// is synchronous, which means all other operations will be
 	// blocked until all values are read. You MUST read all values
 	// until the channel is closed. Best to use `range`.
-	KeysAndValues() <-chan *Tuple
+	KeysAndValues() (<-chan *Tuple, error)
 
 	// Save will write a snapshot of data into provided
 	// directory path. If snapshot successful it will clean up
@@ -53,8 +53,12 @@ type DB interface {
 	Load(dir string) error
 
 	// Wait will block until a previously started operation frees
-	// mutex
+	// mutex. If datastore was already closed, it is a no-op.
 	Wait()
+
+	// Close reset the data store and set status to closed. After
+	// this no operations can be done.
+	Close() error
 }
 
 type Tuple struct {
@@ -63,17 +67,28 @@ type Tuple struct {
 }
 
 type db struct {
-	data  map[string][]byte
-	mutex *sync.Mutex
+	data     map[string][]byte
+	mutex    *sync.Mutex
+	isClosed bool
 }
 
-func (d *db) Put(key, value []byte) {
+func (d *db) Put(key, value []byte) error {
+	if d.isClosed {
+		return ErrAlreadyClosed
+	}
+
 	d.mutex.Lock()
 	d.data[hex.EncodeToString(key)] = value
 	d.mutex.Unlock()
+
+	return nil
 }
 
 func (d *db) Get(key []byte) ([]byte, error) {
+	if d.isClosed {
+		return nil, ErrAlreadyClosed
+	}
+
 	d.mutex.Lock()
 	value, ok := d.data[hex.EncodeToString(key)]
 	d.mutex.Unlock()
@@ -84,10 +99,16 @@ func (d *db) Get(key []byte) ([]byte, error) {
 	return value, nil
 }
 
-func (d *db) Delete(key []byte) {
+func (d *db) Delete(key []byte) error {
+	if d.isClosed {
+		return ErrAlreadyClosed
+	}
+
 	d.mutex.Lock()
 	delete(d.data, hex.EncodeToString(key))
 	d.mutex.Unlock()
+
+	return nil
 }
 
 func (d *db) Size() uint64 {
@@ -96,7 +117,11 @@ func (d *db) Size() uint64 {
 	return uint64(len(d.data))
 }
 
-func (d *db) Keys() <-chan []byte {
+func (d *db) Keys() (<-chan []byte, error) {
+	if d.isClosed {
+		return nil, ErrAlreadyClosed
+	}
+
 	d.mutex.Lock()
 	ch := make(chan []byte)
 
@@ -107,10 +132,14 @@ func (d *db) Keys() <-chan []byte {
 		}
 	}()
 
-	return ch
+	return ch, nil
 }
 
-func (d *db) KeysAndValues() <-chan *Tuple {
+func (d *db) KeysAndValues() (<-chan *Tuple, error) {
+	if d.isClosed {
+		return nil, ErrAlreadyClosed
+	}
+
 	d.mutex.Lock()
 	ch := make(chan *Tuple)
 
@@ -124,10 +153,14 @@ func (d *db) KeysAndValues() <-chan *Tuple {
 		}
 	}()
 
-	return ch
+	return ch, nil
 }
 
 func (d *db) Save(dir string, hist uint) error {
+	if d.isClosed {
+		return ErrAlreadyClosed
+	}
+
 	if hist > maxHistory {
 		return ErrTooMuchHistory
 	}
@@ -138,6 +171,10 @@ func (d *db) Save(dir string, hist uint) error {
 }
 
 func (d *db) Load(dir string) error {
+	if d.isClosed {
+		return ErrAlreadyClosed
+	}
+
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 
@@ -149,13 +186,28 @@ func (d *db) Wait() {
 	defer d.mutex.Unlock()
 }
 
+func (d *db) Close() error {
+	if d.isClosed {
+		return ErrAlreadyClosed
+	}
+
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
+	d.data = nil
+	d.isClosed = true
+
+	return nil
+}
+
 func New() DB {
 	return newDb()
 }
 
 func newDb() *db {
 	return &db{
-		data:  make(map[string][]byte),
-		mutex: &sync.Mutex{},
+		data:     make(map[string][]byte),
+		mutex:    &sync.Mutex{},
+		isClosed: false,
 	}
 }
