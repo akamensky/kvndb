@@ -130,6 +130,7 @@ func (d *db) Keys() (<-chan []byte, error) {
 		for key := range d.data {
 			ch <- hexToBytes(key)
 		}
+		close(ch)
 	}()
 
 	return ch, nil
@@ -151,6 +152,7 @@ func (d *db) KeysAndValues() (<-chan *Tuple, error) {
 				Value: val,
 			}
 		}
+		close(ch)
 	}()
 
 	return ch, nil
