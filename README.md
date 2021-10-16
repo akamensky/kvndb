@@ -1,3 +1,6 @@
+[![Go Reference](https://pkg.go.dev/badge/github.com/akamensky/kvndb.svg)](https://pkg.go.dev/github.com/akamensky/kvndb)
+![GitHub Workflow Status (branch)](https://img.shields.io/github/workflow/status/akamensky/kvndb/Go/main)
+
 # kvnDB - Key-Value Non-DataBase
 kvnDB (pronounced as "Kevin Dee Bee") is not a database. It is a lame embedded in-memory key-value storage with on-demand snapshots
 and some sort of history keeping.
@@ -18,4 +21,4 @@ Get it:
 ```shell
 $ go get github.com/akamensky/kvndb
 ```
-See documentation for API
+See [documentation for API](https://pkg.go.dev/github.com/akamensky/kvndb)
