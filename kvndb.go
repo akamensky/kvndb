@@ -51,6 +51,10 @@ type DB interface {
 	// is synchronous, which means all other operations will be
 	// blocked until it is done.
 	Load(dir string) error
+
+	// Wait will block until a previously started operation frees
+	// mutex
+	Wait()
 }
 
 type Tuple struct {
@@ -138,6 +142,11 @@ func (d *db) Load(dir string) error {
 	defer d.mutex.Unlock()
 
 	return load(d, dir)
+}
+
+func (d *db) Wait() {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
 }
 
 func New() DB {
