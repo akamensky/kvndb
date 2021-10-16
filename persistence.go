@@ -6,7 +6,14 @@ import (
 )
 
 func save(d *db, dir string, hist uint) error {
-	fd, err := getNextSnapshotFDForWriting(dir)
+	maxId, err := getMaxSnapshotId(dir)
+	if err != nil {
+		return err
+	}
+
+	id := maxId + 1
+
+	fd, err := getSnapshotFDForWriting(id, dir)
 	if err != nil {
 		return err
 	}
@@ -31,6 +38,12 @@ func save(d *db, dir string, hist uint) error {
 		return err
 	}
 
+	// write checksum
+	err = writeSnapshotChecksum(id, dir)
+	if err != nil {
+		return err
+	}
+
 	err = cleanupSnapshotsUpTo(dir, hist)
 	if err != nil {
 		return err
@@ -43,12 +56,25 @@ func load(d *db, dir string) error {
 	// reset data regardless
 	d.data = make(map[string][]byte)
 
-	fd, err := getLastSnapshotFDForReading(dir)
+	id, err := getMaxSnapshotId(dir)
 	if err != nil {
 		return err
 	}
-	if fd == nil {
+
+	// if id == 0 there is no snapshots to load
+	if id == 0 {
 		return ErrSnapshotNotFound
+	}
+
+	// verify snapshot checksum
+	err = verifySnapshotChecksum(id, dir)
+	if err != nil {
+		return err
+	}
+
+	fd, err := getSnapshotFDForReading(id, dir)
+	if err != nil {
+		return err
 	}
 
 	for true {

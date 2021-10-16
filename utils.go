@@ -1,10 +1,13 @@
 package kvndb
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -25,6 +28,10 @@ func hexToBytes(s string) []byte {
 
 func generateSnapshotName(n uint) string {
 	return fmt.Sprintf("%06d.kvndb", n)
+}
+
+func generateChecksumName(n uint) string {
+	return fmt.Sprintf("%06d.sha256", n)
 }
 
 var (
@@ -73,17 +80,8 @@ func getAllSnapshotIds(dir string) ([]uint, error) {
 	return result, nil
 }
 
-func getLastSnapshotFDForReading(dir string) (*os.File, error) {
-	maxId, err := getMaxSnapshotId(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	if maxId == 0 {
-		return nil, nil
-	}
-
-	fd, err := os.Open(getFilepath(dir, maxId))
+func getSnapshotFDForReading(id uint, dir string) (*os.File, error) {
+	fd, err := os.Open(getSnapshotFilepath(dir, id))
 	if err != nil {
 		return nil, err
 	}
@@ -91,13 +89,8 @@ func getLastSnapshotFDForReading(dir string) (*os.File, error) {
 	return fd, nil
 }
 
-func getNextSnapshotFDForWriting(dir string) (*os.File, error) {
-	maxId, err := getMaxSnapshotId(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	fd, err := os.OpenFile(getFilepath(dir, maxId+1), os.O_WRONLY|os.O_CREATE, 0666)
+func getSnapshotFDForWriting(id uint, dir string) (*os.File, error) {
+	fd, err := os.OpenFile(getSnapshotFilepath(dir, id), os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		return nil, err
 	}
@@ -105,8 +98,12 @@ func getNextSnapshotFDForWriting(dir string) (*os.File, error) {
 	return fd, nil
 }
 
-func getFilepath(dir string, id uint) string {
+func getSnapshotFilepath(dir string, id uint) string {
 	return filepath.Clean(fmt.Sprintf("%s/%s", dir, generateSnapshotName(id)))
+}
+
+func getChecksumFilepath(dir string, id uint) string {
+	return filepath.Clean(fmt.Sprintf("%s/%s", dir, generateChecksumName(id)))
 }
 
 func getMaxSnapshotId(dir string) (uint, error) {
@@ -228,10 +225,58 @@ func cleanupSnapshotsUpTo(dir string, hist uint) error {
 	toDelete := ids[:(len(ids) - int(keep))]
 
 	for _, id := range toDelete {
-		err = os.Remove(getFilepath(dir, id))
+		err = os.Remove(getSnapshotFilepath(dir, id))
 		if err != nil {
 			return err
 		}
+		err = os.Remove(getChecksumFilepath(dir, id))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func getSnapshotChecksum(id uint, dir string) ([]byte, error) {
+	fd, err := getSnapshotFDForReading(id, dir)
+	if err != nil {
+		return nil, err
+	}
+
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, fd); err != nil {
+		return nil, err
+	}
+
+	return hasher.Sum(nil), nil
+}
+
+func writeSnapshotChecksum(id uint, dir string) error {
+	hash, err := getSnapshotChecksum(id, dir)
+	if err != nil {
+		return err
+	}
+
+	return ioutil.WriteFile(getChecksumFilepath(dir, id), hash, 0600)
+}
+
+func verifySnapshotChecksum(id uint, dir string) error {
+	// read stored checksum
+	storedHash, err := ioutil.ReadFile(getChecksumFilepath(dir, id))
+	if err != nil {
+		return err
+	}
+
+	// calculate file checksum
+	hash, err := getSnapshotChecksum(id, dir)
+	if err != nil {
+		return err
+	}
+
+	// compare checksums
+	if !bytes.Equal(storedHash, hash) {
+		return ErrBadSnapshot
 	}
 
 	return nil
