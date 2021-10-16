@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/golang/snappy"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -73,7 +75,7 @@ func getAllSnapshotIds(dir string) ([]uint, error) {
 	return result, nil
 }
 
-func getLastSnapshotFDForReading(dir string) (*os.File, error) {
+func getLastSnapshotFDForReading(dir string) (io.ReadCloser, error) {
 	maxId, err := getMaxSnapshotId(dir)
 	if err != nil {
 		return nil, err
@@ -88,10 +90,17 @@ func getLastSnapshotFDForReading(dir string) (*os.File, error) {
 		return nil, err
 	}
 
-	return fd, nil
+	// Wrap fd into Snappy compression
+	snappyReader := snappy.NewReader(fd)
+	reader := &fdReader{
+		fd: fd,
+		r:  snappyReader,
+	}
+
+	return reader, nil
 }
 
-func getNextSnapshotFDForWriting(dir string) (*os.File, error) {
+func getNextSnapshotFDForWriting(dir string) (io.WriteCloser, error) {
 	maxId, err := getMaxSnapshotId(dir)
 	if err != nil {
 		return nil, err
@@ -106,7 +115,14 @@ func getNextSnapshotFDForWriting(dir string) (*os.File, error) {
 		return nil, err
 	}
 
-	return fd, nil
+	// Wrap fd into Snappy compression
+	snappyWriter := snappy.NewBufferedWriter(fd)
+	writer := &fdWriter{
+		fd: fd,
+		w:  snappyWriter,
+	}
+
+	return writer, nil
 }
 
 func getFilepath(dir string, id uint) string {
@@ -159,7 +175,7 @@ var (
 	errDataSizeMismatch = errors.New("io: data size mismatch")
 )
 
-func readNext(fd *os.File) ([]byte, []byte, error) {
+func readNext(fd io.Reader) ([]byte, []byte, error) {
 	r := func(l uint32) ([]byte, error) {
 		buf := make([]byte, l)
 		read, err := fd.Read(buf)
@@ -238,5 +254,40 @@ func cleanupSnapshotsUpTo(dir string, hist uint) error {
 		}
 	}
 
+	return nil
+}
+
+type fdWriter struct {
+	fd *os.File
+	w  io.Writer
+}
+
+func (f *fdWriter) Write(p []byte) (int, error) {
+	return f.w.Write(p)
+}
+
+func (f *fdWriter) Close() error {
+	if err := f.fd.Sync(); err != nil {
+		return err
+	}
+	if err := f.fd.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
+type fdReader struct {
+	fd *os.File
+	r  io.Reader
+}
+
+func (f *fdReader) Read(p []byte) (int, error) {
+	return f.r.Read(p)
+}
+
+func (f *fdReader) Close() error {
+	if err := f.fd.Close(); err != nil {
+		return err
+	}
 	return nil
 }

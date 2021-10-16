@@ -22,10 +22,6 @@ func save(d *db, dir string, hist uint) error {
 		}
 	}
 
-	err = fd.Sync()
-	if err != nil {
-		return err
-	}
 	err = fd.Close()
 	if err != nil {
 		return err
@@ -60,6 +56,11 @@ func load(d *db, dir string) error {
 			return err
 		}
 		d.data[hex.EncodeToString(key)] = value
+	}
+
+	err = fd.Close()
+	if err != nil {
+		return err
 	}
 
 	return nil
