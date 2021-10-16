@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/golang/snappy"
 	"io"
 	"io/ioutil"
 	"os"
@@ -80,22 +81,26 @@ func getAllSnapshotIds(dir string) ([]uint, error) {
 	return result, nil
 }
 
-func getSnapshotFDForReading(id uint, dir string) (*os.File, error) {
+func getSnapshotFDForReading(id uint, dir string) (*snappy.Reader, error) {
 	fd, err := os.Open(getSnapshotFilepath(dir, id))
 	if err != nil {
 		return nil, err
 	}
 
-	return fd, nil
+	r := snappy.NewReader(fd)
+
+	return r, nil
 }
 
-func getSnapshotFDForWriting(id uint, dir string) (*os.File, error) {
+func getSnapshotFDForWriting(id uint, dir string) (*snappy.Writer, error) {
 	fd, err := os.OpenFile(getSnapshotFilepath(dir, id), os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		return nil, err
 	}
 
-	return fd, nil
+	w := snappy.NewBufferedWriter(fd)
+
+	return w, nil
 }
 
 func getSnapshotFilepath(dir string, id uint) string {
@@ -152,10 +157,10 @@ var (
 	errDataSizeMismatch = errors.New("io: data size mismatch")
 )
 
-func readNext(fd *os.File) ([]byte, []byte, error) {
+func readNext(fd *snappy.Reader) ([]byte, []byte, error) {
 	r := func(l uint32) ([]byte, error) {
 		buf := make([]byte, l)
-		read, err := fd.Read(buf)
+		read, err := io.ReadFull(fd, buf)
 		if err != nil {
 			return nil, err
 		}

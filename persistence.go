@@ -29,7 +29,7 @@ func save(d *db, dir string, hist uint) error {
 		}
 	}
 
-	err = fd.Sync()
+	err = fd.Flush()
 	if err != nil {
 		return err
 	}
@@ -86,11 +86,6 @@ func load(d *db, dir string) error {
 			return err
 		}
 		d.data[hex.EncodeToString(key)] = value
-	}
-
-	err = fd.Close()
-	if err != nil {
-		return err
 	}
 
 	return nil
